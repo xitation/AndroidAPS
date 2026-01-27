@@ -268,52 +268,57 @@ class OmnipodDashPodStateManagerImpl @Inject constructor(
             return null
         }
         
-        // Build list of time boundaries where rate changes
-        val boundaries = mutableListOf(startTime)
+        // Build set of time boundaries where rate changes
+        val boundaries = mutableSetOf(startTime, endTime)
         
-        // Add temp basal start/end if in period
+        // Add temp basal start/end if within period
         tempBasal?.let { tb ->
             val tempStart = tb.startTime
             val tempEnd = tb.startTime + tb.durationInMinutes * 60_000L
-            if (tempStart in (startTime + 1) until endTime) boundaries.add(tempStart)
-            if (tempEnd in (startTime + 1) until endTime) boundaries.add(tempEnd)
+            if (tempStart in startTime until endTime) boundaries.add(tempStart)
+            if (tempEnd in startTime until endTime) boundaries.add(tempEnd)
         }
         
-        // Add hour boundaries for basal program transitions
-        var nextHour = (startTime / 3600_000L + 1) * 3600_000L  // Next whole hour
-        while (nextHour < endTime) {
-            boundaries.add(nextHour)
-            nextHour += 3600_000L
+        // Add basal program segment boundaries
+        basalProgram?.segments?.forEach { segment ->
+            // Calculate day boundaries in pod's local timezone, not UTC
+            val timeZoneOffset = podState.timeZoneOffset ?: 0
+            val dayStartLocal = ((startTime + timeZoneOffset) / 86400_000L) * 86400_000L - timeZoneOffset
+            var segmentStart = dayStartLocal + segment.startSlotIndex.toLong() * 30 * 60_000L
+            
+            // If segment already passed today, start checking tomorrow
+            if (segmentStart <= startTime) {
+                segmentStart += 86400_000L
+            }
+            
+            // Add all occurrences of this segment boundary until endTime
+            while (segmentStart < endTime) {
+                boundaries.add(segmentStart)
+                segmentStart += 86400_000L
+            }
         }
-        
-        boundaries.add(endTime)
-        boundaries.sort()
         
         // Integrate over each segment
-        var total = 0.0
-        for (i in 0 until boundaries.size - 1) {
-            val segmentStart = boundaries[i]
-            val segmentEnd = boundaries[i + 1]
-            val segmentHours = (segmentEnd - segmentStart) / 3600_000.0
+        return boundaries.sorted().windowed(2).mapIndexed { index, (boundaryStart, boundaryEnd) ->
+            val segmentHours = (boundaryEnd - boundaryStart) / 3600_000.0
+            val segmentMid = (boundaryStart + boundaryEnd) / 2
             
-            // Determine rate at segment midpoint
-            val segmentMid = (segmentStart + segmentEnd) / 2
-            val rate = tempBasal?.takeIf { 
-                segmentMid >= it.startTime && 
-                segmentMid < it.startTime + it.durationInMinutes * 60_000L 
-            }?.rate ?: basalProgram?.rateAt(segmentMid) ?: return null
-
-            total += rate * segmentHours
+            // Get rate: temp basal if active at midpoint, otherwise scheduled basal program
+            val rate = tempBasal?.let { tb ->
+                val tempBasalEnd = tb.startTime + tb.durationInMinutes * 60_000L
+                tb.rate.takeIf { segmentMid in tb.startTime until tempBasalEnd }
+            } ?: basalProgram?.rateAt(segmentMid) ?: return null  // Abort if rate unknown
+            
+            val delivery = rate * segmentHours
             
             logger.debug(
                 LTag.PUMP,
-                "  segment ${i + 1}/${boundaries.size - 1}: " +
-                "${segmentHours * 3600}s @ ${rate}U/h = ${"%.4f".format(rate * segmentHours)}U"
+                "  segment ${index + 1}/${boundaries.size - 1}: ${segmentHours * 3600}s @ ${rate}U/h = ${"%.4f".format(delivery)}U"
             )
+            delivery
+        }.sum().also { total ->
+            logger.debug(LTag.PUMP, "  total integrated delivery: ${"%.4f".format(total)}U")
         }
-        
-        logger.debug(LTag.PUMP, "  total integrated delivery: ${"%.4f".format(total)}U")
-        return total
     }
 
     override val lastStatusResponseReceived: Long
