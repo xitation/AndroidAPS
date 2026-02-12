@@ -327,9 +327,9 @@ class OmnipodDashPodStateManagerImpl @Inject constructor(
         if (!isActivationCompleted) return false  // Don't correct during activation/priming
         if (isSuspended || isPodKaput) return false
 
-        // Check cooldown: 5 minutes minimum between corrections (also prevents re-triggering during delivery)
+        // Check cooldown: 2 minutes minimum between corrections (prevents rapid corrections while allowing timely response)
         podState.lastBasalCorrectionTime?.let {
-            if (System.currentTimeMillis() - it < 5 * 60 * 1000L) return false
+            if (System.currentTimeMillis() - it < 2 * 60 * 1000L) return false
         }
 
         // Compute drift once for efficiency

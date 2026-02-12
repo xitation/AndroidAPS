@@ -542,8 +542,6 @@ class OmnipodDashPumpPlugin @Inject constructor(
             podStateManager.basalCorrectionInProgress = true
             aapsLogger.info(LTag.PUMP, "Delivering basal correction")
 
-            val bolusBeeps = preferences.get(OmnipodBooleanPreferenceKey.BolusBeepsEnabled)
-
             return executeProgrammingCommand(
                 historyEntry = history.createRecord(
                     commandType = OmnipodCommandType.SET_BOLUS,
@@ -560,8 +558,8 @@ class OmnipodDashPumpPlugin @Inject constructor(
                 },
                 command = omnipodManager.bolus(
                     requestedInsulinAmount,
-                    bolusBeeps,
-                    bolusBeeps
+                    confirmationBeeps = false,
+                    completionBeeps = false
                 ).filter { podEvent -> podEvent.isCommandSent() }
                     .ignoreElements(),
                 post = waitForBolusDeliveryToComplete(requestedInsulinAmount, BS.Type.NORMAL)
