@@ -498,19 +498,7 @@ class OmnipodDashPumpPlugin @Inject constructor(
                 },
                 fabricPrivacy::logException
             )
-        disposables += rxBus
-            .toObservable(EventOmnipodDashPumpValuesChanged::class.java)
-            .observeOn(aapsSchedulers.io)
-            .subscribe(
-                {
-                    if (podStateManager.needsBasalCorrection() &&
-                        !commandQueue.isCustomCommandInQueue(CommandDeliverBasalCorrection::class.java)
-                    ) {
-                        commandQueue.customCommand(CommandDeliverBasalCorrection(), null)
-                    }
-                },
-                fabricPrivacy::logException
-            )
+
     }
 
     override fun onStop() {
@@ -1354,6 +1342,11 @@ class OmnipodDashPumpPlugin @Inject constructor(
                     )
                     aapsLogger.info(LTag.PUMP, "syncStopTemporaryBasalWithPumpId ret=$ret pumpId=${historyEntry.pumpId()}")
                     podStateManager.tempBasal = null
+
+                    // Evaluate basal drift correction after confirmed temp basal cancel
+                    if (podStateManager.needsBasalCorrection()) {
+                        commandQueue.customCommand(CommandDeliverBasalCorrection(), null)
+                    }
                 }
                 rxBus.send(EventDismissNotification(Notification.OMNIPOD_TBR_ALERTS))
             }
