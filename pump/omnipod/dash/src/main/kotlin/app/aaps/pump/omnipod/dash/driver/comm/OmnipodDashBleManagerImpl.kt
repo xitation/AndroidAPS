@@ -21,7 +21,7 @@ import app.aaps.pump.omnipod.dash.driver.comm.exceptions.MessageIOException
 import app.aaps.pump.omnipod.dash.driver.comm.exceptions.NotConnectedException
 import app.aaps.pump.omnipod.dash.driver.comm.exceptions.SessionEstablishmentException
 import app.aaps.pump.omnipod.dash.driver.comm.pair.LTKExchanger
-import app.aaps.pump.omnipod.dash.driver.comm.scan.PodScanner
+import app.aaps.pump.omnipod.dash.driver.comm.scan.RxPodScanner
 import app.aaps.pump.omnipod.dash.driver.comm.session.CommandAckError
 import app.aaps.pump.omnipod.dash.driver.comm.session.CommandReceiveError
 import app.aaps.pump.omnipod.dash.driver.comm.session.CommandReceiveSuccess
@@ -53,6 +53,7 @@ class OmnipodDashBleManagerImpl @Inject constructor(
     private val podState: OmnipodDashPodStateManager,
     private val config: Config,
     private val preferences: Preferences,
+    private val rxPodScanner: RxPodScanner,
 ) : OmnipodDashBleManager {
 
     private val busy = AtomicBoolean(false)
@@ -228,16 +229,19 @@ class OmnipodDashBleManagerImpl @Inject constructor(
             aapsLogger.info(LTag.PUMPBTCOMM, "Starting new pod activation")
 
             emitter.onNext(PodEvent.Scanning)
-            val adapter = bluetoothAdapter
-                ?: throw ConnectException("Bluetooth not available")
-            val podScanner = PodScanner(aapsLogger, adapter)
-            val podAddress = podScanner.scanForPod(
-                PodScanner.SCAN_FOR_SERVICE_UUID,
-                PodScanner.POD_ID_NOT_ACTIVATED
-            ).scanResult.device.address
+            // Phase 1: rxPodScanner.scanForPod() returns a Single<String> (MAC address).
+            // blockingGet() is safe here because this lambda already runs on the AAPS
+            // command-queue background thread (inside Observable.create). The blocking
+            // bridge will be removed in Phase 4 when the full BLE manager is made reactive.
+            val podAddress = rxPodScanner.scanForPod(
+                RxPodScanner.SCAN_FOR_SERVICE_UUID,
+                RxPodScanner.POD_ID_NOT_ACTIVATED
+            ).blockingGet()
             podState.bluetoothAddress = podAddress
 
             emitter.onNext(PodEvent.BluetoothConnecting)
+            val adapter = bluetoothAdapter
+                ?: throw ConnectException("Bluetooth not available")
             val podDevice = adapter.getRemoteDevice(podAddress)
             val conn = Connection(podDevice, aapsLogger, config, context, podState)
             connection = conn

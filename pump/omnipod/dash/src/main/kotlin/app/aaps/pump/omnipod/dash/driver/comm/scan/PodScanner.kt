@@ -10,6 +10,17 @@ import app.aaps.pump.omnipod.dash.driver.comm.exceptions.ScanException
 import app.aaps.pump.omnipod.dash.driver.comm.exceptions.ScanFailFoundTooManyException
 import java.util.Arrays
 
+/**
+ * @deprecated Replaced by [RxPodScanner].
+ *
+ * This class uses a raw [android.bluetooth.le.ScanCallback] and `Thread.sleep(5000)` which
+ * always blocks the calling thread for the full scan window even when a pod is found immediately.
+ * [RxPodScanner] uses RxAndroidBle's reactive scan observable and exits as soon as the first
+ * valid pod is found (~200-400 ms typical vs 5000 ms fixed).
+ *
+ * Scheduled for removal in Phase 4 of the RxAndroidBle migration.
+ */
+@Deprecated("Use RxPodScanner instead. Scheduled for deletion in Phase 4.")
 class PodScanner(private val logger: AAPSLogger, private val bluetoothAdapter: BluetoothAdapter) {
 
     @Throws(InterruptedException::class, ScanException::class)
