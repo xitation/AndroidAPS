@@ -356,7 +356,7 @@ class OmnipodDashPodStateManagerImpl @Inject constructor(
         // Except zero temp due to bolus delivery, allow corrections in that case
         if (tempBasal?.rate == 0.0) {
             val timeSinceLastBolus = podState.lastBolus?.startTime?.let { System.currentTimeMillis() - it }
-            if (timeSinceLastBolus == null || timeSinceLastBolus >= 2 * 60 * 1000L) {
+            if (timeSinceLastBolus == null || timeSinceLastBolus >= 5 * 60 * 1000L) {
                 return false
             }
         }

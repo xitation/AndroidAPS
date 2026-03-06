@@ -1405,6 +1405,13 @@ class OmnipodDashPumpPlugin @Inject constructor(
                     )
                 } else {
                     podStateManager.tempBasal = command.tempBasal
+
+                    // Evaluate basal drift correction after confirmed temp basal set
+                    if (!commandQueue.isCustomCommandInQueue(CommandDeliverBasalCorrection::class.java) &&
+                        podStateManager.needsBasalCorrection()
+                    ) {
+                        commandQueue.customCommand(CommandDeliverBasalCorrection(), null)
+                    }
                 }
                 rxBus.send(EventDismissNotification(Notification.OMNIPOD_TBR_ALERTS))
             }
